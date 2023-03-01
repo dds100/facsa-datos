@@ -15,7 +15,7 @@ n_imagenes = 500
 limites = [70, 100, 130]
 
 # Ruta origen
-ruta_origen = "/home/siali/github/facsa/FACSA/agua_noagua"
+ruta_origen = "/home/siali/github/facsa/FACSA/Pruebas/dia_entero_con_agua"
 
 # Rutas destino
 ruta_muyoscuro = "/home/siali/github/facsa/FACSA/clasificacion_color/MuyOscuro"
@@ -57,18 +57,31 @@ def calculo_v(array_v, criterio=0):
         v_modal = int(round(float(np.average(t, weights=array_v, axis=0))))
     return v_modal
 
-def clasificacion(v):
-    if (v<=limites[0]):
-        deteccion = "Muy oscuro"
-    elif (v>=limites[0] and v<limites[1]):
-        deteccion = "Oscuro"
-    elif (v>=limites[1] and v<limites[2]):
-        deteccion = "Buen estado"
-    elif (v>limites[2]):
-        deteccion = "Muy claro"
+def clasificacion(v, vchorro):
+    if hay_agua(v, vchorro):
+        if (v<=limites[0]):
+            deteccion = 0
+        elif (v>=limites[0] and v<limites[1]):
+            deteccion = 1
+        elif (v>=limites[1] and v<limites[2]):
+            deteccion = 2
+        elif (v>=limites[2]):
+            deteccion = 3
     else:
-        deteccion = None
+        deteccion = 4
     return deteccion
+
+def presentacion_cutre(imagen, titulo=""):
+    fig, ax = plt.subplots()
+    ax.imshow(imagen)
+    title_style = {'family': 'serif', 'color': 'red', 'weight': 'bold', 'size': 64}
+    ax.set_title('Título de la imagen', fontdict=title_style)
+    ax.set_title(titulo)
+    ax.set_xticks([])
+    ax.set_yticks([])
+    mgr = plt.get_current_fig_manager()
+    mgr.full_screen_toggle()
+    plt.show()
 
 def presentacion(imagen, grafica1=None, grafica2=None, v=None, titulo_imagen="Imagen", titulo1="Gráfica 1", titulo2="Gráfica 2"):
     labels = ['h', 's', 'v']
@@ -124,8 +137,11 @@ def borrar_contenido(carpeta):
     for file in files:
         os.remove(f"{carpeta}/{file}")
         
-def hay_agua(v1, v2, distancia_max=50):
-    return v2 in range(v1-distancia_max, v1+distancia_max)
+def hay_agua(vtub, vchorro, distancia_max=50):
+    return vchorro in range(vtub-distancia_max, vtub+distancia_max)
+
+def distancia_valor(v, v_ideal=115):
+    return round(100*(1-abs(v_ideal-v)/v_ideal))
 
 if __name__ == "__main__":
     
@@ -165,19 +181,6 @@ if __name__ == "__main__":
         imagen_chorro2 = imagen[chorro2[0]:chorro2[1], chorro2[2]:chorro2[3]]
         imagen_fondo = imagen[fondo[0]:fondo[1], fondo[2]:fondo[3]]
 
-        # Dibujo de ROIs
-        cv2.rectangle(copia, (tuberia1[2], tuberia1[0]), (tuberia1[3], tuberia1[1]), (0, 255, 0), 2)
-        cv2.rectangle(copia, (tuberia2[2], tuberia2[0]), (tuberia2[3], tuberia2[1]), (0, 255, 0), 2)
-        cv2.rectangle(copia, (chorro1[2], chorro1[0]), (chorro1[3], chorro1[1]), (0, 255, 0), 2)
-        cv2.rectangle(copia, (chorro2[2], chorro2[0]), (chorro2[3], chorro2[1]), (0, 255, 0), 2)
-        cv2.rectangle(copia, (fondo[2], fondo[0]), (fondo[3], fondo[1]), (255, 0, 255), 2)
-
-        cv2.putText(copia, "Tuberia_1", (tuberia1[2], tuberia1[0]-10), cv2.FONT_HERSHEY_COMPLEX, .7, (0, 255, 0), 2)
-        cv2.putText(copia, "Tuberia_2", (tuberia2[2], tuberia2[0]-10), cv2.FONT_HERSHEY_COMPLEX, .7, (0, 255, 0), 2)
-        cv2.putText(copia, "Chorro_1", (chorro1[2], chorro1[0]-10), cv2.FONT_HERSHEY_COMPLEX, .7, (0, 255, 0), 2)
-        cv2.putText(copia, "Chorro_2", (chorro2[2], chorro2[0]-10), cv2.FONT_HERSHEY_COMPLEX, .7, (0, 255, 0), 2)
-        cv2.putText(copia, "Fondo", (fondo[2], fondo[0]-10), cv2.FONT_HERSHEY_COMPLEX, .7, (255, 0, 255), 2)
-
         # Cálculo de histogramas
         h, s, v = histograma(imagen, color='hsv', rep=False)
         h1, s1, v1 = histograma(imagen_tuberia1, color='hsv', rep=False)
@@ -196,16 +199,36 @@ if __name__ == "__main__":
         # # Peor valor de las dos tuberías
         # v_modal_tub, indice = peor_tuberia(tupla_v)
         
-        # # Clasificación de la imagen según v
-        # deteccion = clasificacion(v_modal_tub)
-
-        # # Guardado de las imágenes clasificadas
-        # guardar_imagen(archivo, imagen, v_modal, deteccion, indice)
-
+        # Estados posibles
+        estados = ["Muy oscuro", "Oscuro", "Buen estado", "Muy claro", "Sin agua"]
+        
         # Comprobación de agua
         agua1 = hay_agua(v_modal_tub1, v_modal_ch1, distancia_max=50)
         agua2 = hay_agua(v_modal_tub2, v_modal_ch2, distancia_max=50)
         
+        # Clasificación de la imagen según v
+        deteccion1 = clasificacion(v_modal_tub1, v_modal_ch1)
+        deteccion2 = clasificacion(v_modal_tub2, v_modal_ch2)
+
+        # Colores
+        colores_posibles = {"Rojo": (255, 0, 0), "Naranja": (255, 128, 0),"Amarillo": (255, 255, 0), "Verde": (0, 255, 0), "Azul": (0, 255, 255)}
+        colores = ["Rojo", "Naranja", "Verde", "Amarillo", "Azul"]
+        
+        # Dibujo de ROIs
+        cv2.rectangle(copia, (tuberia1[2], tuberia1[0]), (tuberia1[3], tuberia1[1]), colores_posibles[colores[deteccion1]], 2)
+        cv2.rectangle(copia, (tuberia2[2], tuberia2[0]), (tuberia2[3], tuberia2[1]), colores_posibles[colores[deteccion2]], 2)
+        # cv2.rectangle(copia, (chorro1[2], chorro1[0]), (chorro1[3], chorro1[1]), (0, 255, 0), 2)
+        # cv2.rectangle(copia, (chorro2[2], chorro2[0]), (chorro2[3], chorro2[1]), (0, 255, 0), 2)
+        # cv2.rectangle(copia, (fondo[2], fondo[0]), (fondo[3], fondo[1]), (255, 0, 255), 2)
+
+        cv2.putText(copia, f"Tuberia 1: {distancia_valor(v_modal_tub1)}% / {estados[deteccion1]}", (tuberia1[2], tuberia1[0]-10), cv2.FONT_HERSHEY_COMPLEX, .8, colores_posibles[colores[deteccion1]], 2)
+        cv2.putText(copia, f"Tuberia 2: {distancia_valor(v_modal_tub2)}% / {estados[deteccion2]}", (tuberia2[2], tuberia2[0]-10), cv2.FONT_HERSHEY_COMPLEX, .8, colores_posibles[colores[deteccion2]], 2)
+        # cv2.putText(copia, "Chorro_1", (chorro1[2], chorro1[0]-10), cv2.FONT_HERSHEY_COMPLEX, .7, (0, 255, 0), 2)
+        # cv2.putText(copia, "Chorro_2", (chorro2[2], chorro2[0]-10), cv2.FONT_HERSHEY_COMPLEX, .7, (0, 255, 0), 2)
+        # cv2.putText(copia, "Fondo", (fondo[2], fondo[0]-10), cv2.FONT_HERSHEY_COMPLEX, .7, (255, 0, 255), 2)
+
+        # # Guardado de las imágenes clasificadas
+        # guardar_imagen(archivo, imagen, v_modal, deteccion, indice)
         
         # Imshow de la imagen
         representar_imagen = False
@@ -216,15 +239,19 @@ if __name__ == "__main__":
             cv2.destroyAllWindows()
         
         # Imagen con gráficas de histogramas
-        presentar = True
+        presentar = False
         if presentar:
             grafica1 = [h1, s1, v1]
             grafica2 = [hch1, sch1, vch1]
-            presentacion(copia, grafica1, grafica2, titulo_imagen=f"Agua en tuberias 1: {agua1} 2: {agua2}", titulo1=f"Histograma tuberia 1, v = {v_modal_tub1}", titulo2=f"Histograma chorro 1, v = {v_modal_ch1}")
+            presentacion(copia, grafica1, grafica2, titulo_imagen=f"Agua en tuberias -> 1: {estados[deteccion1]} 2: {estados[deteccion2]}", titulo1=f"Histograma tuberia 1, v = {v_modal_tub1}", titulo2=f"Histograma chorro 1, v = {v_modal_ch1}")
+        
+        # Imagen a pelo con detecciones
+        presentar_cutre = True
+        if presentar_cutre:
+            presentacion_cutre(copia)#, titulo=f"Agua en tuberias    -->     1: {estados[deteccion1]}    2: {estados[deteccion2]}")
         
         # Contador de imagenes
         cont += 1
-        
         
         # # Mostrar el proceso en consola
         # print(f"{cont}/{len(archivos)} - {archivo} - {agua1}")

@@ -6,7 +6,7 @@ def start(update, context):
 	context.bot.send_message(update.message.chat_id, "Bienvenido")
 
 def main():
-	TOKEN="123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11"
+	TOKEN="5711664951:AAFQfGt-x3PFpCtGK0CCP4j7_STwnHj2TI0"
 	updater=Updater(TOKEN, use_context=True)
 	dp=updater.dispatcher
 
