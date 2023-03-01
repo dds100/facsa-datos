@@ -5,13 +5,28 @@ import os
 import shutil
 import time
 
-ruta_origen = "/home/siali/github/facsa/FACSA/pruebas/dataset_images_forzada_22_feb"
-ruta_buena = "/home/siali/github/facsa/FACSA/pruebas/buenas"
-ruta_mala = "/home/siali/github/facsa/FACSA/pruebas/malas"
+# Este script tal como está lee las imágenes de una carpeta de origen y las clasifica
+# en función del color del agua en otras 4 carpetas.
 
+# Número de imágenes a copiar
+n_imagenes = 500
+
+# Limites de valor
+limites = [70, 100, 130]
+
+# Ruta origen
+ruta_origen = "/home/siali/github/facsa/FACSA/dia_entero_con_agua"
+
+# Rutas destino
+ruta_muyoscuro = "/home/siali/github/facsa/FACSA/clasificacion_color/MuyOscuro"
+ruta_oscuro = "/home/siali/github/facsa/FACSA/clasificacion_color/Oscuro"
+ruta_buenestado = "/home/siali/github/facsa/FACSA/clasificacion_color/BuenEstado"
+ruta_muyclaro = "/home/siali/github/facsa/FACSA/clasificacion_color/MuyClaro"
+
+# Lista de archivos
 archivos = os.listdir(ruta_origen)
-# archivos = [archivo for archivo in archivos if ".png" in archivo]
 
+# Funciones
 def histograma(imagen, color='rgb', titulo='Histograma', rep=True):
     colores = ['r', 'g', 'b']
     if color == 'rgb':
@@ -29,129 +44,167 @@ def histograma(imagen, color='rgb', titulo='Histograma', rep=True):
         plt.show()
     return [k for k in frecuencias]
 
-def presentacion(imagen, grafica1=None, grafica2=None, v=None):
-    if (v<=65):
+def calculo_v(array_v, criterio=0):
+    # Quitar los últimos picos del final (ruido)
+    array_v[-5:] = 0
+    if criterio == 0:
+        # Criterio 1: valor modal
+        v_modal = np.argmax(array_v)
+    if criterio == 1:
+        # Criterio 2: media ponderada del valor
+        t = np.arange(len(array_v)).reshape(-1, 1)
+        v_modal = int(round(float(np.average(t, weights=array_v, axis=0))))
+    return v_modal
+
+def clasificacion(v):
+    if (v<=limites[0]):
         deteccion = "Muy oscuro"
-    elif (v>=65 and v<90):
+    elif (v>=limites[0] and v<limites[1]):
         deteccion = "Oscuro"
-    elif (v>=90 and v<110):
+    elif (v>=limites[1] and v<limites[2]):
         deteccion = "Buen estado"
-    elif (v>110):
+    elif (v>limites[2]):
         deteccion = "Muy claro"
     else:
         deteccion = None
-    
-    labels = ['h', 's', 'v']
-    
-    # Crear figura y subplots
-    fig, (ax1, ax2) = plt.subplots(1, 2)
+    return deteccion
 
-    # Agregar imagen
+def presentacion(imagen, grafica1=None, grafica2=None, v=None, deteccion=None):
+    labels = ['h', 's', 'v']
+    fig, (ax1, ax2) = plt.subplots(1, 2)
     ax1.imshow(imagen)
     ax1.set_title(f'Detección: {deteccion}')
-
-    # Agregar gráficas si se proporcionan
     if grafica1 is not None:
         x1 = np.arange(len(grafica1[0]))
         ax2a = plt.subplot2grid((2, 2), (0, 1))
         for i in range(3):
             ax2a.plot(x1, grafica1[i], label=labels[i])
         ax2a.set_title(f'Histograma del agua (tuberia 1)\nPromedio de V: {v}')
-        ax2a.legend()
-        
+        ax2a.legend()  
     if grafica2 is not None:
         x2 = np.arange(len(grafica2[0]))
         ax2b = plt.subplot2grid((2, 2), (1, 1))
         for i in range(3):
             ax2b.plot(x2, grafica2[i], label=labels[i])
-        ax2b.set_title('Histograma del fondo')
+        ax2b.set_title('Histograma del imagen_fondo')
         ax2b.legend()
-
-    # Obtener el objeto del administrador de figuras actual y cambiar al modo de pantalla completa
     mgr = plt.get_current_fig_manager()
     mgr.full_screen_toggle()
-
-    # Mostrar la figura
     plt.show()
-
-
-t1 = time.time()
-for archivo in archivos[:3]:
-    src_file = os.path.join(ruta_origen, archivo)
     
-    print(src_file)
+def guardar_imagen(archivo, imagen, v, deteccion, indice, rep=False):
+    if type(deteccion) == str:
+        deteccion = deteccion.replace(" ", "")
+    nombre_archivo = f"{archivo.split('.')[0]}_{deteccion}_tub{indice}_v{v}.jpg"
+    if (v<=limites[0]):
+        cv2.imwrite(f"{ruta_muyoscuro}/{nombre_archivo}", imagen)
+    elif (v>=limites[0] and v<limites[1]):
+        cv2.imwrite(f"{ruta_oscuro}/{nombre_archivo}", imagen)
+    elif (v>=limites[1] and v<limites[2]):
+        cv2.imwrite(f"{ruta_buenestado}/{nombre_archivo}", imagen)
+    elif (v>limites[2]):
+        cv2.imwrite(f"{ruta_muyclaro}/{nombre_archivo}", imagen)
+    else:
+        return "Error"
+    if rep:  
+        print(archivo)
+
+def mover_imagen():
+    pass
+
+def peor_tuberia(tupla_v):
+    if min(tupla_v) <= limites[1]:
+        return min(tupla_v), tupla_v.index(max(tupla_v))+1
+    else:
+        return max(tupla_v), tupla_v.index(max(tupla_v))+1
     
-    imagen = cv2.imread(src_file)
-    copia = imagen.copy()
+def borrar_contenido(carpeta):
+    files = os.listdir(carpeta)
+    for file in files:
+        os.remove(f"{carpeta}/{file}")
     
-    # ROIs
-    tub1 = [360, 425, 775, 925]
-    tub2 = [500, 575, 1225, 1325]
-    chorro = [500, 1000, 500, 1000]
-    fon = [300 , 1800, 150, 300]
-    tuberia1 = imagen[tub1[0]:tub1[1], tub1[2]:tub1[3]]
-    tuberia2 = imagen[tub2[0]:tub2[1], tub2[2]:tub2[3]]
-    chorro = imagen[chorro[0]:chorro[1], chorro[2]:chorro[3]]
-    fondo = imagen[fon[0]:fon[1], fon[2]:fon[3]]
-
-    # Dibujo de ROIs
-    cv2.rectangle(copia, (tub1[2], tub1[0]), (tub1[3], tub1[1]), (0, 255, 0), 2)
-    cv2.rectangle(copia, (tub2[2], tub2[0]), (tub2[3], tub2[1]), (0, 255, 0), 2)
-    cv2.rectangle(copia, (fon[2], fon[0]), (fon[3], fon[1]), (0, 255, 0), 2)
-
-    cv2.putText(copia, "Tuberia_1", (tub1[2], tub1[0]-10), cv2.FONT_HERSHEY_COMPLEX, .7, (0, 255, 0), 2)
-    cv2.putText(copia, "Tuberia_2", (tub2[2], tub2[0]-10), cv2.FONT_HERSHEY_COMPLEX, .7, (0, 255, 0), 2)
-    cv2.putText(copia, "Fondo", (fon[2], fon[0]-10), cv2.FONT_HERSHEY_COMPLEX, .7, (0, 255, 0), 2)
-
+if __name__ == "__main__":
     
-    h, s, v = histograma(tuberia1, color='hsv', rep=False)
-    hf, sf, vf = histograma(fondo, color='hsv', rep=False)
+    # Borro los archivos de las carpetas de pruebas
+    borrar_contenido(ruta_buenestado)
+    borrar_contenido(ruta_muyclaro)
+    borrar_contenido(ruta_oscuro)
+    borrar_contenido(ruta_muyoscuro)
     
-    # Quitar los últimos picos
-    v[-5:] = 0
-
-    # Criterio 1: valor modal
-    fmax = int(np.amax(v))
-    v_modal = np.argmax(v)
-
-    # Criterio 2: media ponderada del valor
-    t = np.arange(len(v)).reshape(-1, 1)
-    v_modal2 = int(round(float(np.average(t, weights=v, axis=0))))
-
-    print(f"Valor más repetido = {v_modal2}. Repetido {fmax} veces.")
-    # print(f"Valor más repetido = {v_modal2} (con media).")
+    # Para medir el tiempo total
+    t1 = time.time()
     
-    # if v_modal >= 160:
-    #     cv2.imwrite(f"{ruta_buena}/{archivo}.jpg", copia)
-    # else:
-    #     cv2.imwrite(f"{ruta_mala}/{archivo}.jpg", copia)
+    # Contador de imagenes
+    cont = 0
+    
+    # Recorro los archivos de la carpeta origen
+    for archivo in archivos:
         
-    # if os.path.exists(src_file):
-    #     if v_modal >= 160:
-    #         dst_file = os.path.join(ruta_buena, archivo)
-    #     else:
-    #         dst_file = os.path.join(ruta_mala, archivo)
-    #     shutil.move(src_file, dst_file)
+        # Ruta de cada imagen
+        src_file = os.path.join(ruta_origen, archivo)
+            
+        # Leer imagen
+        imagen = cv2.imread(src_file)
+        copia = imagen.copy()
+        
+        # ROIs
+        tuberia1 = [360, 425, 775, 925]
+        tuberia2 = [540, 590, 1225, 1325]
+        chorro = [500, 1000, 500, 1000]
+        fondo = [300 , 1800, 150, 300]
+        imagen_tuberia1 = imagen[tuberia1[0]:tuberia1[1], tuberia1[2]:tuberia1[3]]
+        imagen_tuberia2 = imagen[tuberia2[0]:tuberia2[1], tuberia2[2]:tuberia2[3]]
+        imagen_chorro = imagen[chorro[0]:chorro[1], chorro[2]:chorro[3]]
+        imagen_fondo = imagen[fondo[0]:fondo[1], fondo[2]:fondo[3]]
 
-    representar_imagen = False
-    if representar_imagen:
-        cv2.imshow("Imagen", copia)
-        cv2.waitKey(0)
-        cv2.destroyAllWindows()
-    
-    
-    
-    # Llamar a la función presentacion()
-    grafica1 = [h, s, v]
-    # grafica2 = [x2, y2]
-    presentacion(copia, grafica1, v=v_modal2)
-    
-       
+        # Dibujo de ROIs
+        cv2.rectangle(copia, (tuberia1[2], tuberia1[0]), (tuberia1[3], tuberia1[1]), (0, 255, 0), 2)
+        cv2.rectangle(copia, (tuberia2[2], tuberia2[0]), (tuberia2[3], tuberia2[1]), (0, 255, 0), 2)
+        cv2.rectangle(copia, (fondo[2], fondo[0]), (fondo[3], fondo[1]), (255, 0, 255), 2)
+
+        cv2.putText(copia, "Tuberia_1", (tuberia1[2], tuberia1[0]-10), cv2.FONT_HERSHEY_COMPLEX, .7, (0, 255, 0), 2)
+        cv2.putText(copia, "Tuberia_2", (tuberia2[2], tuberia2[0]-10), cv2.FONT_HERSHEY_COMPLEX, .7, (0, 255, 0), 2)
+        cv2.putText(copia, "Fondo", (fondo[2], fondo[0]-10), cv2.FONT_HERSHEY_COMPLEX, .7, (255, 0, 255), 2)
+
+        # Cálculo de histogramas
+        h1, s1, v1 = histograma(imagen_tuberia1, color='hsv', rep=False)
+        h2, s2, v2 = histograma(imagen_tuberia2, color='hsv', rep=False)
+        hf, sf, vf = histograma(imagen_fondo, color='hsv', rep=False)
         
+        # Cálculo de v
+        v_modal1 = calculo_v(v1, criterio=1)
+        v_modal2 = calculo_v(v2, criterio=1)
+        tupla_v = (v_modal1, v_modal2)
         
+        # Peor valor de las dos tuberías
+        v_modal, indice = peor_tuberia(tupla_v)
         
+        # Clasificación de la imagen según v
+        deteccion = clasificacion(v_modal)
+
+        # Guardado de las imágenes clasificadas
+        guardar_imagen(archivo, copia, v_modal, deteccion, indice)
+
+        # Imshow de la imagen
+        representar_imagen = False
+        if representar_imagen:
+            cv2.imshow("Imagen", copia)
+            cv2.waitKey(0)
+            cv2.destroyAllWindows()
         
-    
-t2 = time.time()
-print(f"Tiempo total = {t2-t1}")
-    
+        # Imagen con gráficas de histogramas
+        presentacion = False
+        if presentacion:
+            grafica1 = [h1, s1, v1]
+            grafica2 = [h2, s2, v2]
+            presentacion(copia, grafica1, grafica2, v=v_modal, deteccion=deteccion)
+        
+        # Contador de imagenes
+        cont += 1
+        
+        # Mostrar el proceso en consola
+        print(f"{cont}/{len(archivos)} - {archivo}")
+
+    # Para medir el tiempo toal
+    t2 = time.time()
+    print(f"Tiempo total = {t2-t1}")
