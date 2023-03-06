@@ -4,24 +4,31 @@ import numpy as np
 import os
 import shutil
 import time
+from twilio.rest import Client
 
-# En este script estaba intentando impolementar una función para distinguir si
-# sale agua o no de las tuberías.
+# Credenciales Twilio para SMS
+# Set environment variables for your credentials
+account_sid = "AC02cefd407ce832492d7d9e4418366db0"
+auth_token = "273740116cc165550a194ce4ea91da4f"
+client = Client(account_sid, auth_token)
 
 # Número de imágenes a copiar
 n_imagenes = 500
 
 # Limites de valor
+valor_ideal = 120
 limites = [70, 100, 130]
 
 # Ruta origen
 ruta_origen = "/home/siali/github/facsa/FACSA/Pruebas/dia_entero_con_agua"
 
 # Rutas destino
-ruta_muyoscuro = "/home/siali/github/facsa/FACSA/clasificacion_color/MuyOscuro"
-ruta_oscuro = "/home/siali/github/facsa/FACSA/clasificacion_color/Oscuro"
-ruta_buenestado = "/home/siali/github/facsa/FACSA/clasificacion_color/BuenEstado"
-ruta_muyclaro = "/home/siali/github/facsa/FACSA/clasificacion_color/MuyClaro"
+ruta_muyoscuro = "/home/siali/github/facsa/FACSA/Pruebas/clasificacion_color/MuyOscuro"
+ruta_oscuro = "/home/siali/github/facsa/FACSA/Pruebas/clasificacion_color/Oscuro"
+ruta_buenestado = "/home/siali/github/facsa/FACSA/Pruebas/clasificacion_color/BuenEstado"
+ruta_muyclaro = "/home/siali/github/facsa/FACSA/Pruebas/clasificacion_color/MuyClaro"
+ruta_sinagua = "/home/siali/github/facsa/FACSA/Pruebas/clasificacion_color/SinAgua"
+ruta_presentacion = "/home/siali/github/facsa/FACSA/Pruebas/presentacion"
 
 # Lista de archivos
 archivos = os.listdir(ruta_origen)
@@ -106,22 +113,11 @@ def presentacion(imagen, grafica1=None, grafica2=None, v=None, titulo_imagen="Im
     mgr.full_screen_toggle()
     plt.show()
     
-def guardar_imagen(archivo, imagen, v, deteccion, indice, rep=False):
-    if type(deteccion) == str:
-        deteccion = deteccion.replace(" ", "")
-    nombre_archivo = f"{archivo.split('.')[0]}_{deteccion}_tub{indice}_v{v}.jpg"
-    if (v<=limites[0]):
-        cv2.imwrite(f"{ruta_muyoscuro}/{nombre_archivo}", imagen)
-    elif (v>=limites[0] and v<limites[1]):
-        cv2.imwrite(f"{ruta_oscuro}/{nombre_archivo}", imagen)
-    elif (v>=limites[1] and v<limites[2]):
-        cv2.imwrite(f"{ruta_buenestado}/{nombre_archivo}", imagen)
-    elif (v>limites[2]):
-        cv2.imwrite(f"{ruta_muyclaro}/{nombre_archivo}", imagen)
-    else:
-        return "Error"
-    if rep:  
-        print(archivo)
+def guardar_imagen(archivo, imagen, deteccion, rutas, contador=None, rep=False):
+    ruta = rutas[deteccion]
+    ruta_completa = f"{ruta}/{archivo.split('.')[0]}_{contador}.jpg"
+    cv2.imwrite(f"{ruta_completa}", imagen)
+    
 
 def mover_imagen():
     pass
@@ -140,7 +136,7 @@ def borrar_contenido(carpeta):
 def hay_agua(vtub, vchorro, distancia_max=50):
     return vchorro in range(vtub-distancia_max, vtub+distancia_max)
 
-def distancia_valor(v, v_ideal=115):
+def distancia_valor(v, v_ideal=120):
     return round(100*(1-abs(v_ideal-v)/v_ideal))
 
 if __name__ == "__main__":
@@ -149,7 +145,7 @@ if __name__ == "__main__":
     t1 = time.time()
     
     # Borro los archivos de las carpetas de pruebas
-    borrar = False
+    borrar = True
     if borrar:
         borrar_contenido(ruta_buenestado)
         borrar_contenido(ruta_muyclaro)
@@ -196,11 +192,12 @@ if __name__ == "__main__":
         v_modal_ch2 = calculo_v(vch2, criterio=1)
         tupla_v = (v_modal_tub1, v_modal_tub2)
         
-        # # Peor valor de las dos tuberías
-        # v_modal_tub, indice = peor_tuberia(tupla_v)
+        # Peor valor de las dos tuberías
+        v_modal_tub, indice = peor_tuberia(tupla_v)
         
         # Estados posibles
-        estados = ["Muy oscuro", "Oscuro", "Buen estado", "Muy claro", "Sin agua"]
+        estados = ["No nominal", "No nominal", "Nominal", "Exceso de poli", "Sin agua"]
+        rutas = [ruta_muyoscuro, ruta_oscuro, ruta_buenestado, ruta_muyclaro, ruta_sinagua]
         
         # Comprobación de agua
         agua1 = hay_agua(v_modal_tub1, v_modal_ch1, distancia_max=50)
@@ -209,26 +206,29 @@ if __name__ == "__main__":
         # Clasificación de la imagen según v
         deteccion1 = clasificacion(v_modal_tub1, v_modal_ch1)
         deteccion2 = clasificacion(v_modal_tub2, v_modal_ch2)
+        detecciones = (deteccion1, deteccion2)
 
         # Colores
-        colores_posibles = {"Rojo": (255, 0, 0), "Naranja": (255, 128, 0),"Amarillo": (255, 255, 0), "Verde": (0, 255, 0), "Azul": (0, 255, 255)}
-        colores = ["Rojo", "Naranja", "Verde", "Amarillo", "Azul"]
+        colores_posibles = {"Rojo": (0, 0, 255), "Naranja": (0, 128, 255),"Amarillo": (255, 255, 0), "Verde": (0, 255, 0), "Azul": (255, 255, 0), "Blanco": (255, 255, 255)}
+        colores = ["Rojo", "Naranja", "Verde", "Azul", "Blanco"]
         
         # Dibujo de ROIs
-        cv2.rectangle(copia, (tuberia1[2], tuberia1[0]), (tuberia1[3], tuberia1[1]), colores_posibles[colores[deteccion1]], 2)
-        cv2.rectangle(copia, (tuberia2[2], tuberia2[0]), (tuberia2[3], tuberia2[1]), colores_posibles[colores[deteccion2]], 2)
+        # cv2.rectangle(copia, (tuberia1[2], tuberia1[0]), (tuberia1[3], tuberia1[1]), colores_posibles[colores[deteccion1]], 2)
+        # cv2.rectangle(copia, (tuberia2[2], tuberia2[0]), (tuberia2[3], tuberia2[1]), colores_posibles[colores[deteccion2]], 2)
         # cv2.rectangle(copia, (chorro1[2], chorro1[0]), (chorro1[3], chorro1[1]), (0, 255, 0), 2)
         # cv2.rectangle(copia, (chorro2[2], chorro2[0]), (chorro2[3], chorro2[1]), (0, 255, 0), 2)
         # cv2.rectangle(copia, (fondo[2], fondo[0]), (fondo[3], fondo[1]), (255, 0, 255), 2)
 
-        cv2.putText(copia, f"Tuberia 1: {distancia_valor(v_modal_tub1)}% / {estados[deteccion1]}", (tuberia1[2], tuberia1[0]-10), cv2.FONT_HERSHEY_COMPLEX, .8, colores_posibles[colores[deteccion1]], 2)
-        cv2.putText(copia, f"Tuberia 2: {distancia_valor(v_modal_tub2)}% / {estados[deteccion2]}", (tuberia2[2], tuberia2[0]-10), cv2.FONT_HERSHEY_COMPLEX, .8, colores_posibles[colores[deteccion2]], 2)
+        cv2.putText(copia, f"{v_modal_tub1}: {estados[deteccion1].upper()}", (tuberia1[2]-50, tuberia1[0]-120), cv2.FONT_HERSHEY_SIMPLEX, .9, (220, 0, 0), 2, cv2.LINE_AA)
+        cv2.putText(copia, f"{v_modal_tub2}: {estados[deteccion2].upper()}", (tuberia2[2]-50, tuberia2[0]-200), cv2.FONT_HERSHEY_SIMPLEX, .8, (220, 0, 0), 2, cv2.LINE_AA)
         # cv2.putText(copia, "Chorro_1", (chorro1[2], chorro1[0]-10), cv2.FONT_HERSHEY_COMPLEX, .7, (0, 255, 0), 2)
         # cv2.putText(copia, "Chorro_2", (chorro2[2], chorro2[0]-10), cv2.FONT_HERSHEY_COMPLEX, .7, (0, 255, 0), 2)
         # cv2.putText(copia, "Fondo", (fondo[2], fondo[0]-10), cv2.FONT_HERSHEY_COMPLEX, .7, (255, 0, 255), 2)
 
-        # # Guardado de las imágenes clasificadas
-        # guardar_imagen(archivo, imagen, v_modal, deteccion, indice)
+        # Guardado de las imágenes clasificadas
+        guardar_imagen(archivo, copia, min(deteccion1, deteccion2), rutas, cont)
+        # cv2.imwrite(f"{ruta_muyoscuro}/{archivo}", copia)
+        # cv2.imwrite(f"{ruta_presentacion}/{cont}", copia)
         
         # Imshow de la imagen
         representar_imagen = False
@@ -246,15 +246,25 @@ if __name__ == "__main__":
             presentacion(copia, grafica1, grafica2, titulo_imagen=f"Agua en tuberias -> 1: {estados[deteccion1]} 2: {estados[deteccion2]}", titulo1=f"Histograma tuberia 1, v = {v_modal_tub1}", titulo2=f"Histograma chorro 1, v = {v_modal_ch1}")
         
         # Imagen a pelo con detecciones
-        presentar_cutre = True
+        presentar_cutre = False
         if presentar_cutre:
             presentacion_cutre(copia)#, titulo=f"Agua en tuberias    -->     1: {estados[deteccion1]}    2: {estados[deteccion2]}")
         
         # Contador de imagenes
         cont += 1
         
-        # # Mostrar el proceso en consola
-        # print(f"{cont}/{len(archivos)} - {archivo} - {agua1}")
+        # Mostrar el proceso en consola
+        print(f"{cont}/{len(archivos)} - {archivo}")
+        
+        # Alertas
+        if any(x != 2 for x in detecciones):
+            mensaje = f"Alarma:\n\t- Tubería 1: {estados[deteccion1].upper()}\n\t- Tubería 2: {estados[deteccion2].upper()}\n"
+            print(mensaje)
+            # message = client.messages.create(body=mensaje,
+            #                                 from_="+12706790926",
+            #                                 to="+34652034697")
+        else:
+            print("Todo correcto")
 
     # Para medir el tiempo total
     t2 = time.time()
